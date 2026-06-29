@@ -7,7 +7,7 @@ IMAGE := agentic-demo:dev
 NS := otel-demo
 KREP := kubectl -n $(NS)
 
-.PHONY: up down cluster image collector-image secret dashboard backends collectors agent load urls logs reload verify
+.PHONY: up down cluster image collector-image secret dashboard backends collectors agent load urls logs reload verify multi
 
 up: cluster image collector-image secret backends collectors agent ## Full bring-up
 	@echo
@@ -69,6 +69,14 @@ load: ## Fire traffic at the agent
 
 verify: ## End-to-end smoke test (pods, agent, metrics, traces) -> pass/fail
 	./scripts/verify.sh
+
+multi: image ## Add a 2nd agent (support-agent) + sub-agent endpoint + in-cluster load
+	$(KREP) rollout restart deploy/agent
+	kubectl apply -f k8s/41-agents-extra.yaml
+	$(KREP) rollout status deploy/agent --timeout=120s
+	$(KREP) rollout status deploy/support-agent --timeout=120s
+	$(KREP) rollout status deploy/loadgen --timeout=60s
+	@echo "Multi-agent running. Grafana -> 'Agentic — Multi-Agent & Sub-Agents'"
 
 urls: ## Print access URLs
 	@echo "Grafana:  http://localhost:30030  (anonymous admin)"

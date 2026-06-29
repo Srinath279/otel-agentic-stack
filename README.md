@@ -145,6 +145,7 @@ make down
 | `make load` | Fire 50 requests at the agent (`make load N=200` for more) |
 | `make verify` | End-to-end smoke test: pods, agent, metrics, traces → pass/fail |
 | `make reload` | Rebuild the agent image and roll it (dev loop) |
+| `make multi` | Add a 2nd agent + sub-agent endpoint + in-cluster load generator |
 | `make collectors` | Rebuild + redeploy just the collectors |
 | `make dashboard` | Reload all Grafana dashboards |
 | `make urls` | Print Grafana + agent URLs |
@@ -190,8 +191,20 @@ Auto-provisioned in Grafana (☰ → Dashboards):
 | **Agentic — Cost & Token Usage** | $/min by model, tokens in/out, cumulative, token share |
 | **Agentic — Performance & Latency** | LLM p50/p95/p99, agent-run p95, request rate, loop heatmap |
 | **Agentic — Pipeline Health** | Collector accepted/refused/sent/failed spans, queue, memory, firing alerts |
+| **Agentic — Multi-Agent & Sub-Agents** | Per-service and per-role breakdown (multiple agents + coordinator/sub-agents) |
 
 Set the time range to **Last 30 minutes** and run `make load` so panels have data.
+
+### Screenshots
+
+Capture instructions and filenames are in [docs/screenshots/](docs/screenshots/). Once you drop PNGs
+there, they render below:
+
+| Overview | Cost & Usage |
+|---|---|
+| ![Overview](docs/screenshots/overview.png) | ![Cost](docs/screenshots/cost-usage.png) |
+| **Performance** | **Multi-Agent** |
+| ![Performance](docs/screenshots/performance.png) | ![Multi-Agent](docs/screenshots/multi-agent.png) |
 
 **Alerts** (Alertmanager + Prometheus rules): LLM p95 latency, tool failure rate, runaway loops,
 token burn, refused data, exporter failures, target down. Add Slack/PagerDuty receivers in
@@ -232,6 +245,52 @@ with obs.agent_run("planner") as run:
     run.iteration()
 ```
 See [obs/README.md](obs/README.md). Install with `pip install ./obs`.
+
+---
+
+## Multiple agents & sub-agents
+
+The design scales along two axes — and both show up as distinct, queryable telemetry.
+
+### Many agents / use-cases on one pipeline
+Every agent is just a workload with its own `OTEL_SERVICE_NAME`, all exporting to the **same gateway**.
+No per-agent pipeline wiring — the collectors fan in. The metrics carry a `service_name` label, so the
+**Multi-Agent dashboard** breaks everything down per agent.
+
+```bash
+make multi      # adds a 2nd agent (support-agent) + an in-cluster load generator
+```
+
+To add another agent/use-case: copy the `support-agent` block in
+[k8s/41-agents-extra.yaml](k8s/41-agents-extra.yaml), change the name and `OTEL_SERVICE_NAME`. To scale
+one agent horizontally: `kubectl -n otel-demo scale deploy/agent --replicas=3` (the HPA pattern). All
+replicas/agents share the same `service.name` grouping but distinct pod identity.
+
+### Sub-agents within an agent (fan-out)
+A **coordinator** delegates sub-tasks to sub-agents that run concurrently, with trace context propagated
+across threads — so one request becomes a single nested trace:
+
+```
+agent.run coordinator
+  ├── agent.run weather-agent ── chat ── tool get_weather
+  └── agent.run math-agent    ── chat ── tool calculate
+```
+
+Try it:
+```bash
+curl -s -X POST localhost:30080/orchestrate -H 'content-type: application/json' \
+  -d '{"message":"weather in Paris and 3 * 4"}'
+```
+
+Implemented in [agent/subagents.py](agent/subagents.py) — **add a row to `SUBAGENTS` to scale the
+fan-out**, no other change. The `agent_name` label (`coordinator`, `weather-agent`, `math-agent`, …)
+distinguishes roles in metrics and traces. For sub-agents in **separate services**, `obs` provides
+`inject_headers()` / `context_from_headers()` to carry `traceparent` across the network so the child's
+tree nests under the parent.
+
+**Why it stays clean at scale:** the app only emits standard `gen_ai.*` + `agent.*` telemetry tagged by
+`service.name` and `agent.name`. Tail sampling, cost, and routing are applied centrally in the collectors
+— so going from 1 agent to 100 agents with sub-agents is a deploy concern, not a re-instrumentation one.
 
 ---
 

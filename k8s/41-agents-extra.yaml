@@ -1,0 +1,76 @@
+# Demonstrates MULTIPLE agents on ONE pipeline. Each agent is just a Deployment
+# with its own OTEL_SERVICE_NAME, all exporting to the same gateway collector.
+# To add another agent/use-case: copy this block, change the name + service name.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-agent
+  namespace: otel-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: support-agent}
+  template:
+    metadata:
+      labels: {app: support-agent}
+    spec:
+      containers:
+        - name: agent
+          image: agentic-demo:dev
+          imagePullPolicy: Never
+          ports:
+            - {containerPort: 8080}
+          envFrom:
+            - configMapRef: {name: agent-config}
+          env:
+            - {name: OTEL_SERVICE_NAME, value: "support-agent"}   # env overrides the ConfigMap value
+          readinessProbe:
+            httpGet: {path: /healthz, port: 8080}
+            initialDelaySeconds: 5
+          resources:
+            requests: {cpu: "100m", memory: "256Mi"}
+            limits: {memory: "512Mi"}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: support-agent
+  namespace: otel-demo
+spec:
+  selector: {app: support-agent}
+  ports:
+    - {port: 8080, targetPort: 8080}
+---
+# In-cluster load generator: continuously drives BOTH agents + the sub-agent
+# endpoint, so the multi-agent dashboard always has live data (no NodePort needed).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: otel-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: loadgen}
+  template:
+    metadata:
+      labels: {app: loadgen}
+    spec:
+      containers:
+        - name: loadgen
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                curl -s -X POST http://agent:8080/chat -H 'content-type: application/json' \
+                  -d '{"message":"weather in Tokyo"}' >/dev/null
+                curl -s -X POST http://agent:8080/orchestrate -H 'content-type: application/json' \
+                  -d '{"message":"weather in Paris and 3 * 4"}' >/dev/null
+                curl -s -X POST http://support-agent:8080/chat -H 'content-type: application/json' \
+                  -d '{"message":"calculate 9 * 9"}' >/dev/null
+                sleep 2
+              done
+          resources:
+            requests: {cpu: "10m", memory: "16Mi"}
+            limits: {memory: "32Mi"}
