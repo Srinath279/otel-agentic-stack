@@ -54,7 +54,7 @@ data:
             numeric_attribute: {key: agent.loop.iterations, min_value: 8}
           - name: sample-rest
             type: probabilistic
-            probabilistic: {sampling_percentage: 10}
+            probabilistic: {sampling_percentage: 100}   # local demo: keep all for visibility; prod: 5-10%
       batch:
         send_batch_size: 1024
         timeout: 5s
