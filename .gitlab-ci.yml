@@ -1,0 +1,27 @@
+# Static validation — no cluster required. Runs on GitLab CI shared runners.
+stages:
+  - validate
+
+validate:
+  stage: validate
+  image: python:3.11-slim
+  before_script:
+    - pip install --quiet pyyaml
+  script:
+    - echo "Python compile (obs + agent)"
+    - python -m py_compile obs/obs/__init__.py agent/app.py agent/agent.py agent/llm.py agent/tools.py
+    - echo "Validate dashboards (JSON)"
+    - python -c "import json,glob; [json.load(open(f)) for f in glob.glob('dashboards/*.json')]; print('dashboards ok')"
+    - echo "Validate manifests + embedded configs (YAML)"
+    - |
+      python - <<'PY'
+      import glob, yaml
+      for f in sorted(glob.glob('k8s/*.yaml')) + glob.glob('helm/*.yaml') + ['kind/cluster.yaml']:
+          docs = list(yaml.safe_load_all(open(f)))
+          for d in docs:
+              if d and d.get('kind') == 'ConfigMap':
+                  for k, v in (d.get('data') or {}).items():
+                      if k.endswith(('.yaml', '.yml')):
+                          yaml.safe_load(v)
+      print('yaml ok')
+      PY
