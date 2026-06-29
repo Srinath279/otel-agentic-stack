@@ -7,18 +7,104 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['alertmanager:9093']
     scrape_configs:
-      # Agent + spanmetrics RED metrics, re-exposed by the consumer collector.
       - job_name: otel-consumer-metrics
         static_configs:
           - targets: ['otel-collector-consumer:8889']
-      # Collectors' own self-observability (dropped spans, queue depth, refused data).
       - job_name: collector-telemetry
         static_configs:
           - targets: ['otel-collector-gateway:8888', 'otel-collector-consumer:8888']
       - job_name: prometheus
         static_configs:
           - targets: ['localhost:9090']
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: otel-demo
+data:
+  # ---- Usage / cost reporter (recording rules) -------------------------------
+  # Cost = tokens * price. Claude Opus 4.8 pricing: $5/1M input, $25/1M output.
+  usage.yml: |
+    groups:
+      - name: usage-and-cost
+        interval: 30s
+        rules:
+          - record: agent:tokens_per_min:by_model_type
+            expr: sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_total[5m])) * 60
+          - record: agent:cost_usd_per_min:input
+            expr: sum by (gen_ai_request_model) (rate(gen_ai_client_token_usage_total{gen_ai_token_type="input"}[5m])) * 60 * 5 / 1e6
+          - record: agent:cost_usd_per_min:output
+            expr: sum by (gen_ai_request_model) (rate(gen_ai_client_token_usage_total{gen_ai_token_type="output"}[5m])) * 60 * 25 / 1e6
+          - record: agent:cost_usd_per_min:total
+            expr: sum(agent:cost_usd_per_min:input) + sum(agent:cost_usd_per_min:output)
+  # ---- Alert rules -----------------------------------------------------------
+  alerts.yml: |
+    groups:
+      - name: agent-alerts
+        rules:
+          - alert: HighLLMLatencyP95
+            expr: histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket[5m]))) > 10
+            for: 5m
+            labels: {severity: warning}
+            annotations:
+              summary: "LLM call p95 latency > 10s"
+          - alert: HighToolFailureRate
+            expr: sum(rate(agent_tool_calls_total{outcome="error"}[5m])) / clamp_min(sum(rate(agent_tool_calls_total[5m])), 0.001) > 0.2
+            for: 5m
+            labels: {severity: warning}
+            annotations:
+              summary: "Tool failure rate > 20%"
+          - alert: AgentRunawayLoops
+            expr: histogram_quantile(0.95, sum by (le) (rate(agent_loop_iterations_bucket[5m]))) >= 8
+            for: 5m
+            labels: {severity: warning}
+            annotations:
+              summary: "Agent loop iterations p95 >= 8 (possible runaway)"
+          - alert: HighTokenBurnRate
+            expr: sum(rate(gen_ai_client_token_usage_total[5m])) * 60 > 100000
+            for: 10m
+            labels: {severity: warning}
+            annotations:
+              summary: "Token burn > 100k tokens/min"
+      - name: pipeline-alerts
+        rules:
+          - alert: CollectorRefusingData
+            expr: sum(rate(otelcol_receiver_refused_spans_total[5m])) > 0 or sum(rate(otelcol_receiver_refused_metric_points_total[5m])) > 0
+            for: 5m
+            labels: {severity: critical}
+            annotations:
+              summary: "A collector is refusing telemetry (overloaded / backpressure)"
+          - alert: ExporterSendFailures
+            expr: sum(rate(otelcol_exporter_send_failed_spans_total[5m])) > 0
+            for: 5m
+            labels: {severity: critical}
+            annotations:
+              summary: "A collector exporter is failing to send spans"
+          - alert: TargetDown
+            expr: up == 0
+            for: 2m
+            labels: {severity: critical}
+            annotations:
+              summary: "Prometheus scrape target {{ $labels.job }} is down"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: otel-demo
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 3Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -27,27 +113,36 @@ metadata:
   namespace: otel-demo
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels: {app: prometheus}
   template:
     metadata:
       labels: {app: prometheus}
     spec:
+      securityContext:
+        fsGroup: 65534          # nobody — Prometheus runs non-root, needs to write the PVC
       containers:
         - name: prometheus
           image: prom/prometheus:v2.54.1
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
             - "--enable-feature=exemplar-storage"
           ports:
             - {containerPort: 9090}
           volumeMounts:
             - {name: config, mountPath: /etc/prometheus}
+            - {name: rules, mountPath: /etc/prometheus/rules}
+            - {name: data, mountPath: /prometheus}
           resources:
             requests: {cpu: "100m", memory: "256Mi"}
-            limits: {memory: "512Mi"}
+            limits: {memory: "640Mi"}
       volumes:
         - {name: config, configMap: {name: prometheus-config}}
+        - {name: rules, configMap: {name: prometheus-rules}}
+        - {name: data, persistentVolumeClaim: {claimName: prometheus-data}}
 ---
 apiVersion: v1
 kind: Service

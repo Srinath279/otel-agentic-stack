@@ -17,7 +17,7 @@ data:
       max_block_duration: 5m
     compactor:
       compaction:
-        block_retention: 1h
+        block_retention: 24h
     storage:
       trace:
         backend: local
@@ -26,6 +26,17 @@ data:
         wal:
           path: /var/tempo/wal
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-data
+  namespace: otel-demo
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,19 +44,23 @@ metadata:
   namespace: otel-demo
 spec:
   replicas: 1
+  strategy:
+    type: Recreate          # single RWO volume — don't run two pods at once
   selector:
     matchLabels: {app: tempo}
   template:
     metadata:
       labels: {app: tempo}
     spec:
+      securityContext:
+        fsGroup: 10001          # tempo runs non-root; let it write the PVC
       containers:
         - name: tempo
           image: grafana/tempo:2.6.1
           args: ["-config.file=/etc/tempo/tempo.yaml"]
           ports:
-            - {containerPort: 3200}   # query API
-            - {containerPort: 4317}   # OTLP gRPC in
+            - {containerPort: 3200}
+            - {containerPort: 4317}
           volumeMounts:
             - {name: config, mountPath: /etc/tempo}
             - {name: data, mountPath: /var/tempo}
@@ -54,7 +69,7 @@ spec:
             limits: {memory: "512Mi"}
       volumes:
         - {name: config, configMap: {name: tempo-config}}
-        - {name: data, emptyDir: {}}
+        - {name: data, persistentVolumeClaim: {claimName: tempo-data}}
 ---
 apiVersion: v1
 kind: Service

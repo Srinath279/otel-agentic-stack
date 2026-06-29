@@ -26,6 +26,13 @@ data:
         type: loki
         url: http://loki:3100
         access: proxy
+      - name: Alertmanager
+        uid: alertmanager
+        type: alertmanager
+        url: http://alertmanager:9093
+        access: proxy
+        jsonData:
+          implementation: prometheus
 ---
 apiVersion: v1
 kind: ConfigMap

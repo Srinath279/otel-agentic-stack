@@ -1,0 +1,77 @@
+{
+  "title": "Agentic — Cost & Token Usage",
+  "uid": "agent-cost-usage",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Estimated cost ($/min, all models)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "agent:cost_usd_per_min:total" } ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Cost rate by model ($/min)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 5 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "agent:cost_usd_per_min:input", "legendFormat": "{{gen_ai_request_model}} input" },
+        { "refId": "B", "expr": "agent:cost_usd_per_min:output", "legendFormat": "{{gen_ai_request_model}} output" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Tokens / min (input vs output)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "agent:tokens_per_min:by_model_type", "legendFormat": "{{gen_ai_request_model}} {{gen_ai_token_type}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Cumulative tokens (since start)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_token_type) (gen_ai_client_token_usage_total)", "legendFormat": "{{gen_ai_token_type}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "piechart",
+      "title": "Token share: input vs output",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gen_ai_token_type) (gen_ai_client_token_usage_total)", "legendFormat": "{{gen_ai_token_type}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Avg output tokens per LLM call",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(gen_ai_client_token_usage_total{gen_ai_token_type=\"output\"}[5m])) / clamp_min(sum(rate(gen_ai_client_operation_duration_seconds_count[5m])), 0.001)" }
+      ]
+    }
+  ]
+}

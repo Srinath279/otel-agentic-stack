@@ -1,0 +1,78 @@
+{
+  "title": "Agentic — Pipeline Health (Collectors)",
+  "uid": "agent-pipeline-health",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "10s",
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Scrape targets up",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(up)" } ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Spans accepted vs refused (rate)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(otelcol_receiver_accepted_spans_total[5m]))", "legendFormat": "accepted" },
+        { "refId": "B", "expr": "sum(rate(otelcol_receiver_refused_spans_total[5m]))", "legendFormat": "refused" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Exporter sent vs send-failed spans (rate)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(otelcol_exporter_sent_spans_total[5m]))", "legendFormat": "sent" },
+        { "refId": "B", "expr": "sum(rate(otelcol_exporter_send_failed_spans_total[5m]))", "legendFormat": "send-failed" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Exporter queue size",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "otelcol_exporter_queue_size", "legendFormat": "{{exporter}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Collector process memory (RSS)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "otelcol_process_memory_rss", "legendFormat": "{{job}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Active alerts",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        { "refId": "A", "expr": "ALERTS{alertstate=\"firing\"}", "format": "table", "instant": true }
+      ]
+    }
+  ]
+}

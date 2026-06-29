@@ -32,6 +32,17 @@ data:
       allow_structured_metadata: true
       volume_enabled: true
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: loki-data
+  namespace: otel-demo
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,12 +50,16 @@ metadata:
   namespace: otel-demo
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels: {app: loki}
   template:
     metadata:
       labels: {app: loki}
     spec:
+      securityContext:
+        fsGroup: 10001          # loki runs non-root; let it write the PVC
       containers:
         - name: loki
           image: grafana/loki:3.2.1
@@ -59,7 +74,7 @@ spec:
             limits: {memory: "512Mi"}
       volumes:
         - {name: config, configMap: {name: loki-config}}
-        - {name: data, emptyDir: {}}
+        - {name: data, persistentVolumeClaim: {claimName: loki-data}}
 ---
 apiVersion: v1
 kind: Service

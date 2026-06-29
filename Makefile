@@ -30,16 +30,17 @@ secret: ## Create the Anthropic secret from .env (only if a key is set)
 	  echo "anthropic secret applied"; \
 	else echo "No ANTHROPIC_API_KEY (mock mode)"; fi
 
-dashboard: ## (Re)load the Grafana dashboard configmap
+dashboard: ## (Re)load all Grafana dashboards from dashboards/
 	@$(KREP) create configmap grafana-dashboard \
-	  --from-file=dashboards/agent-overview.json \
+	  --from-file=dashboards/ \
 	  --dry-run=client -o yaml | kubectl apply -f -
 
-backends: dashboard ## Kafka + Tempo + Loki + Prometheus + Grafana
+backends: dashboard ## Kafka + Tempo + Loki + Prometheus + Alertmanager + Grafana
 	kubectl apply -f k8s/10-kafka.yaml -f k8s/20-tempo.yaml -f k8s/21-loki.yaml \
-	  -f k8s/22-prometheus.yaml -f k8s/23-grafana.yaml
+	  -f k8s/22-prometheus.yaml -f k8s/24-alertmanager.yaml -f k8s/23-grafana.yaml
 	$(KREP) rollout status deploy/kafka --timeout=180s
 	$(KREP) rollout status deploy/tempo --timeout=120s
+	$(KREP) rollout status deploy/prometheus --timeout=120s
 	$(KREP) rollout status deploy/grafana --timeout=120s
 
 collector-image: ## Build + load the collector image into kind (single-arch; archive load works with Docker Desktop containerd store)

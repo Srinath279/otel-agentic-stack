@@ -224,6 +224,36 @@ exemplar links from metrics to traces. Lock down auth (SSO) for shared/prod use.
 
 ---
 
+## 11b. Alerting & cost reporting
+**Files:** [k8s/24-alertmanager.yaml](../k8s/24-alertmanager.yaml), rules in [k8s/22-prometheus.yaml](../k8s/22-prometheus.yaml)
+
+**What it is.** Prometheus **recording rules** precompute token rates and **cost** (`agent:cost_usd_per_min:*`,
+priced at Opus 4.8 $5/$25 per 1M in/out) — this is the "usage/cost reporter". Prometheus **alert rules**
+fire on LLM p95 latency, tool failure rate, runaway loops, token burn, and pipeline health (refused data,
+send failures, target down). **Alertmanager** receives firing alerts (local: no-op receiver; prod: add
+Slack/PagerDuty/webhook).
+
+**How it helps.** Cost becomes a first-class, queryable metric (per model, in/out split). Alerts turn the
+dashboards into something that pages you instead of something you have to watch. Recording rules also make
+cost panels cheap (no heavy query at view time).
+
+**Full capability.** Add Slack/webhook receivers + routing/inhibition in `alertmanager.yml`. Add per-team
+cost rules (group by a `team` resource attribute). Move cost rollups into the collector for multi-backend portability.
+
+## 11c. Dashboards (one per concern)
+**Files:** [dashboards/](../dashboards/)
+
+| Dashboard | uid | Use it for |
+|---|---|---|
+| **Agentic — OTEL Overview** | `agent-overview` | At-a-glance: tokens, latency, tool success, logs |
+| **Agentic — Cost & Token Usage** | `agent-cost-usage` | $/min by model, tokens in/out, cumulative, token share |
+| **Agentic — Performance & Latency** | `agent-performance` | LLM p50/p95/p99, agent-run p95, req rate, calls/run, loop heatmap |
+| **Agentic — Pipeline Health** | `agent-pipeline-health` | Collector accepted/refused/sent/failed spans, queue, memory, firing alerts |
+
+All auto-provisioned (`make dashboard` loads the whole `dashboards/` dir). In Grafana: ☰ → Dashboards.
+
+---
+
 ## 11. Platform & deploy
 
 | Piece | Files | Role |
