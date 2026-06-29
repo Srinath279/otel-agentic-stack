@@ -26,8 +26,8 @@
       "gridPos": { "h": 6, "w": 16, "x": 8, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 5 }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "agent:cost_usd_per_min:input", "legendFormat": "{{gen_ai_request_model}} input" },
-        { "refId": "B", "expr": "agent:cost_usd_per_min:output", "legendFormat": "{{gen_ai_request_model}} output" }
+        { "refId": "A", "expr": "agent:cost_usd_per_min:input", "legendFormat": "{{service_name}} {{gen_ai_request_model}} input" },
+        { "refId": "B", "expr": "agent:cost_usd_per_min:output", "legendFormat": "{{service_name}} {{gen_ai_request_model}} output" }
       ]
     },
     {
@@ -38,7 +38,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "agent:tokens_per_min:by_model_type", "legendFormat": "{{gen_ai_request_model}} {{gen_ai_token_type}}" }
+        { "refId": "A", "expr": "agent:tokens_per_min:by_service_model_type", "legendFormat": "{{service_name}} {{gen_ai_request_model}} {{gen_ai_token_type}}" }
       ]
     },
     {

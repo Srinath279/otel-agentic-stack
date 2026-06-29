@@ -8,6 +8,14 @@ production system. Findings are severity-ranked; each has **Current → Problem 
 > biased by sampling**), the backends aren't production-grade (single-replica, local disk), and there's
 > effectively no security or multi-tenancy. None are hard to fix; the rest of this doc is the plan.
 
+> **Implementation status (this repo):** ✅ **done** — C1 (trace-ID Kafka partitioning), C2 (spanmetrics
+> moved to gateway, pre-sampling), H4 (no double-spanning), M3/H5-partial (per-service cost), M5 (flush
+> on shutdown), M6 (shared sub-agent pool), L1/L2/L3 (locked init, log-noise filter, prompt-capture off
+> by default). 📋 **documented, not deployed on the laptop** (need real infra, would risk the working
+> single-node stack) — H1 (HA object-storage backends), H2 (metrics remote-write), H3 (mTLS/auth),
+> H5-full (multi-tenancy/quotas), M1 (per-node agent collector), M2 (adaptive sampling), M4 (Operator/
+> GitOps), M7 (full bi-directional correlation). These are the prod-cluster steps; configs are below.
+
 ---
 
 ## Severity-ranked findings

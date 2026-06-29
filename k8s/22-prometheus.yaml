@@ -37,12 +37,13 @@ data:
       - name: usage-and-cost
         interval: 30s
         rules:
-          - record: agent:tokens_per_min:by_model_type
-            expr: sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_total[5m])) * 60
+          # Grouped by service_name so cost is attributed per agent/use-case (M3/H5).
+          - record: agent:tokens_per_min:by_service_model_type
+            expr: sum by (service_name, gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_total[5m])) * 60
           - record: agent:cost_usd_per_min:input
-            expr: sum by (gen_ai_request_model) (rate(gen_ai_client_token_usage_total{gen_ai_token_type="input"}[5m])) * 60 * 5 / 1e6
+            expr: sum by (service_name, gen_ai_request_model) (rate(gen_ai_client_token_usage_total{gen_ai_token_type="input"}[5m])) * 60 * 5 / 1e6
           - record: agent:cost_usd_per_min:output
-            expr: sum by (gen_ai_request_model) (rate(gen_ai_client_token_usage_total{gen_ai_token_type="output"}[5m])) * 60 * 25 / 1e6
+            expr: sum by (service_name, gen_ai_request_model) (rate(gen_ai_client_token_usage_total{gen_ai_token_type="output"}[5m])) * 60 * 25 / 1e6
           - record: agent:cost_usd_per_min:total
             expr: sum(agent:cost_usd_per_min:input) + sum(agent:cost_usd_per_min:output)
   # ---- Alert rules -----------------------------------------------------------

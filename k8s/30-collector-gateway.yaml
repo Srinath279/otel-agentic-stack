@@ -48,6 +48,8 @@ data:
         protocol_version: 2.0.0
         topic: otel-traces
         encoding: otlp_proto
+        partition_traces_by_id: true   # C1: all spans of a trace -> same partition,
+                                       # so the consumer tier can tail-sample at scale
       kafka/metrics:
         brokers: [kafka:9092]
         protocol_version: 2.0.0
@@ -58,6 +60,17 @@ data:
         protocol_version: 2.0.0
         topic: otel-logs
         encoding: otlp_proto
+    connectors:
+      # C2: derive RED metrics from the FULL span stream here (pre-sampling), not in
+      # the consumer (post-tail-sampling), so rates/error-rates aren't biased.
+      spanmetrics:
+        namespace: agent
+        histogram:
+          explicit:
+            buckets: [50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
+        dimensions:
+          - {name: gen_ai.request.model}
+          - {name: agent.name}
     service:
       extensions: [health_check]
       telemetry:
@@ -67,9 +80,9 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, resource/tier, transform/genai_semantics, redaction/pii, batch]
-          exporters: [kafka/traces]
+          exporters: [kafka/traces, spanmetrics]
         metrics:
-          receivers: [otlp]
+          receivers: [otlp, spanmetrics]
           processors: [memory_limiter, resource/tier, batch]
           exporters: [kafka/metrics]
         logs:

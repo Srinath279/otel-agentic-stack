@@ -29,16 +29,7 @@ data:
         topic: otel-logs
         encoding: otlp_proto
         group_id: otel-consumer
-    connectors:
-      # Derive RED metrics (rate/errors/duration) from spans, dimensioned by model + agent.
-      spanmetrics:
-        namespace: agent
-        histogram:
-          explicit:
-            buckets: [50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
-        dimensions:
-          - {name: gen_ai.request.model}
-          - {name: agent.name}
+    # spanmetrics moved to the gateway (pre-sampling) — see C2 in docs/ARCHITECTURE-REVIEW.md
     processors:
       memory_limiter:
         check_interval: 1s
@@ -105,9 +96,9 @@ data:
         traces:
           receivers: [kafka/traces]
           processors: [memory_limiter, tail_sampling, batch]
-          exporters: [otlp/tempo, spanmetrics]
+          exporters: [otlp/tempo]
         metrics:
-          receivers: [kafka/metrics, spanmetrics]
+          receivers: [kafka/metrics]
           processors: [memory_limiter, batch]
           exporters: [prometheus]
         logs:

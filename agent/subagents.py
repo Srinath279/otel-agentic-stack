@@ -19,6 +19,9 @@ import obs
 from llm import MODEL
 from tools import execute
 
+# M6: one shared, bounded pool instead of a new pool per request.
+_POOL = cf.ThreadPoolExecutor(max_workers=8, thread_name_prefix="subagent")
+
 
 def _city(msg: str) -> str:
     m = re.search(r"\b(?:in|for|at)\s+([A-Z][a-zA-Z]+)", msg)
@@ -56,10 +59,9 @@ def coordinate(message: str, agent_name: str = "coordinator") -> dict:
     with obs.agent_run(agent_name) as run:
         run.iteration()
         ctx = obs.current_context()
-        with cf.ThreadPoolExecutor(max_workers=max(2, len(SUBAGENTS))) as ex:
-            futures = {
-                ex.submit(_run_subagent, name, tool, build(message), ctx): name
-                for name, (tool, build) in SUBAGENTS.items()
-            }
-            results = [f.result() for f in cf.as_completed(futures)]
+        futures = {
+            _POOL.submit(_run_subagent, name, tool, build(message), ctx): name
+            for name, (tool, build) in SUBAGENTS.items()
+        }
+        results = [f.result() for f in cf.as_completed(futures)]
     return {"answer": " ".join(sorted(results)), "subagents": list(SUBAGENTS)}
