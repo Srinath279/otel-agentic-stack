@@ -7,7 +7,7 @@ IMAGE := agentic-demo:dev
 NS := otel-demo
 KREP := kubectl -n $(NS)
 
-.PHONY: up down cluster image collector-image secret dashboard backends collectors agent load urls logs reload
+.PHONY: up down cluster image collector-image secret dashboard backends collectors agent load urls logs reload verify
 
 up: cluster image collector-image secret backends collectors agent ## Full bring-up
 	@echo
@@ -65,6 +65,9 @@ reload: image ## Rebuild + roll the agent (dev loop)
 
 load: ## Fire traffic at the agent
 	./scripts/load.sh $(N)
+
+verify: ## End-to-end smoke test (pods, agent, metrics, traces) -> pass/fail
+	./scripts/verify.sh
 
 urls: ## Print access URLs
 	@echo "Grafana:  http://localhost:30030  (anonymous admin)"

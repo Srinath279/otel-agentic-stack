@@ -5,7 +5,8 @@ via **kind**. Implements the two-tier collector design (gateway → Kafka → co
 sampling, semantic enforcement, PII redaction, and the three pillars (traces, metrics, logs).
 
 See **[PLAN.md](PLAN.md)** for the full architecture, the production hardening notes, and the
-minimal-code integration design.
+minimal-code integration design. See **[docs/COMPONENTS.md](docs/COMPONENTS.md)** for a per-component
+reference (what each piece is, how it helps, what to use it for, how to extend it).
 
 ## What's here
 
@@ -30,6 +31,7 @@ Makefile     up / down / build / reload / load / urls / logs
 cp .env.example .env          # default LLM_MODE=mock needs no API key
 make up                       # create cluster, build+load image, deploy everything
 make load                     # send traffic
+make verify                   # automated end-to-end smoke test (pods, agent, metrics, traces)
 open http://localhost:30030   # Grafana (anonymous admin) → "Agentic — OTEL Overview"
 ```
 
