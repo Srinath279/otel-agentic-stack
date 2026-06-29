@@ -327,6 +327,7 @@ This runs the production *shape* at laptop scale. To go fully production (detail
 
 - **[PLAN.md](PLAN.md)** — full architecture, production-grade target design, minimal-code integration model
 - **[docs/COMPONENTS.md](docs/COMPONENTS.md)** — per-component reference (what each piece is, how it helps, what to use it for, how to extend)
+- **[docs/ARCHITECTURE-REVIEW.md](docs/ARCHITECTURE-REVIEW.md)** — critical review + re-architecture for scalable production (severity-ranked findings, target design, migration path)
 - **[obs/README.md](obs/README.md)** — the instrumentation package
 - **[helm/README.md](helm/README.md)** — production deploy via the upstream collector chart
 
