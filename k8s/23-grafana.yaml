@@ -26,6 +26,13 @@ data:
         type: loki
         url: http://loki:3100
         access: proxy
+        jsonData:
+          derivedFields:                 # M7: link a log's trace_id straight to the Tempo trace
+            - name: TraceID
+              matcherType: label
+              matcherRegex: trace_id
+              datasourceUid: tempo
+              url: '$${__value.raw}'
       - name: Alertmanager
         uid: alertmanager
         type: alertmanager

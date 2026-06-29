@@ -20,11 +20,16 @@ data:
         block_retention: 24h
     storage:
       trace:
-        backend: local
-        local:
-          path: /var/tempo/blocks
+        backend: s3                # H1: blocks in object storage (MinIO stands in for S3)
+        s3:
+          bucket: tempo
+          endpoint: minio:9000
+          access_key: minioadmin
+          secret_key: minioadmin
+          insecure: true
+          forcepathstyle: true
         wal:
-          path: /var/tempo/wal
+          path: /var/tempo/wal     # WAL stays on local disk (the PVC)
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

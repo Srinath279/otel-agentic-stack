@@ -14,9 +14,7 @@ data:
         - static_configs:
             - targets: ['alertmanager:9093']
     scrape_configs:
-      - job_name: otel-consumer-metrics
-        static_configs:
-          - targets: ['otel-collector-consumer:8889']
+      # (agent + spanmetrics metrics now arrive via remote-write — H2 — not scraped)
       - job_name: collector-telemetry
         static_configs:
           - targets: ['otel-collector-gateway:8888', 'otel-collector-consumer:8888']
@@ -131,6 +129,7 @@ spec:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
             - "--enable-feature=exemplar-storage"
+            - "--web.enable-remote-write-receiver"   # H2: accept pushed metrics from the consumer
           ports:
             - {containerPort: 9090}
           volumeMounts:

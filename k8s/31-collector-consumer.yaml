@@ -62,10 +62,10 @@ data:
       otlp/tempo:
         endpoint: tempo:4317
         tls: {insecure: true}
-      prometheus:
-        endpoint: 0.0.0.0:8889
+      prometheusremotewrite:                          # H2: push metrics (no scrape gaps)
+        endpoint: http://prometheus:9090/api/v1/write
         resource_to_telemetry_conversion: {enabled: true}
-        enable_open_metrics: true
+        tls: {insecure: true}
       otlphttp/loki:
         logs_endpoint: http://loki:3100/otlp/v1/logs
         tls: {insecure: true}
@@ -100,7 +100,7 @@ data:
         metrics:
           receivers: [kafka/metrics]
           processors: [memory_limiter, batch]
-          exporters: [prometheus]
+          exporters: [prometheusremotewrite]
         logs:
           receivers: [kafka/logs]
           processors: [memory_limiter, batch]

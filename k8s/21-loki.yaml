@@ -12,9 +12,13 @@ data:
       instance_addr: 127.0.0.1
       path_prefix: /loki
       storage:
-        filesystem:
-          chunks_directory: /loki/chunks
-          rules_directory: /loki/rules
+        s3:                        # H1: chunks + index in object storage (MinIO)
+          endpoint: http://minio:9000
+          bucketnames: loki
+          access_key_id: minioadmin
+          secret_access_key: minioadmin
+          s3forcepathstyle: true
+          insecure: true
       replication_factor: 1
       ring:
         kvstore:
@@ -23,7 +27,7 @@ data:
       configs:
         - from: 2024-01-01
           store: tsdb
-          object_store: filesystem
+          object_store: s3
           schema: v13
           index:
             prefix: index_
