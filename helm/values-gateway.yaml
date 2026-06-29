@@ -1,7 +1,8 @@
 # Upstream chart: open-telemetry/opentelemetry-collector
 mode: deployment
 image:
-  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.119.0"
 replicaCount: 2
 autoscaling:
   enabled: true
