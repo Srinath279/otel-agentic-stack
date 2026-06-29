@@ -7,9 +7,9 @@ IMAGE := agentic-demo:dev
 NS := otel-demo
 KREP := kubectl -n $(NS)
 
-.PHONY: up down cluster image secret dashboard backends collectors agent load urls logs reload
+.PHONY: up down cluster image collector-image secret dashboard backends collectors agent load urls logs reload
 
-up: cluster image secret backends collectors agent ## Full bring-up
+up: cluster image collector-image secret backends collectors agent ## Full bring-up
 	@echo
 	@$(MAKE) urls
 
@@ -41,10 +41,14 @@ backends: dashboard ## Kafka + Tempo + Loki + Prometheus + Grafana
 	$(KREP) rollout status deploy/tempo --timeout=120s
 	$(KREP) rollout status deploy/grafana --timeout=120s
 
-collectors: ## Gateway + Consumer collectors
+collector-image: ## Build + load the collector image into kind (single-arch, no attestation manifest)
+	docker build --provenance=false --sbom=false -f collector/Dockerfile -t otelcol-local:dev collector
+	kind load docker-image otelcol-local:dev --name $(CLUSTER)
+
+collectors: collector-image ## Gateway + Consumer collectors
 	kubectl apply -f k8s/30-collector-gateway.yaml -f k8s/31-collector-consumer.yaml
-	$(KREP) rollout status deploy/otel-collector-gateway --timeout=120s
-	$(KREP) rollout status deploy/otel-collector-consumer --timeout=120s
+	$(KREP) rollout status deploy/otel-collector-gateway --timeout=300s
+	$(KREP) rollout status deploy/otel-collector-consumer --timeout=300s
 
 agent: ## Deploy the agent (applies LLM_MODE from .env if set)
 	@if [ -n "$$LLM_MODE" ]; then \

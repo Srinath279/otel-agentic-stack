@@ -92,7 +92,8 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.115.0
+          image: otelcol-local:dev
+          imagePullPolicy: IfNotPresent      # built + loaded into kind (see collector/Dockerfile)
           args: ["--config=/etc/otel/collector.yaml"]
           ports:
             - {containerPort: 4317}

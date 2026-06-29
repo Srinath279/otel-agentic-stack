@@ -1,7 +1,7 @@
 # Upstream chart: open-telemetry/opentelemetry-collector
 mode: deployment
 image:
-  repository: otel/opentelemetry-collector-contrib
+  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
 replicaCount: 1   # stateful: scale via Kafka partitions, not naive replicas
 config:
   extensions:
