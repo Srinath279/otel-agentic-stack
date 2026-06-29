@@ -131,7 +131,7 @@ spec:
       containers:
         - name: collector
           image: otelcol-local:dev
-          imagePullPolicy: IfNotPresent      # built + loaded into kind (see collector/Dockerfile)
+          imagePullPolicy: Never             # use the kind-loaded image only; never pull from a registry
           args: ["--config=/etc/otel/collector.yaml"]
           ports:
             - {containerPort: 8889}   # prometheus metrics out

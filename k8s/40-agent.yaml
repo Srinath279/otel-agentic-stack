@@ -14,7 +14,7 @@ spec:
       containers:
         - name: agent
           image: agentic-demo:dev
-          imagePullPolicy: IfNotPresent    # image is loaded into kind, never pulled
+          imagePullPolicy: Never           # use the kind-loaded image only; never pull from a registry
           ports:
             - {containerPort: 8080}
           envFrom:

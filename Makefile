@@ -17,9 +17,10 @@ cluster: ## Create the kind cluster (idempotent)
 	@kind get clusters | grep -qx $(CLUSTER) || kind create cluster --config kind/cluster.yaml
 	@kubectl apply -f k8s/00-namespace.yaml
 
-image: ## Build the agent image and load it into kind
-	docker build -f agent/Dockerfile -t $(IMAGE) .
-	kind load docker-image $(IMAGE) --name $(CLUSTER)
+image: ## Build the agent image and load it into kind (single-arch + archive load)
+	docker build --provenance=false --sbom=false -f agent/Dockerfile -t $(IMAGE) .
+	docker save $(IMAGE) -o /tmp/agentic-demo.tar
+	kind load image-archive /tmp/agentic-demo.tar --name $(CLUSTER)
 
 secret: ## Create the Anthropic secret from .env (only if a key is set)
 	@if [ -n "$$ANTHROPIC_API_KEY" ]; then \
@@ -41,9 +42,10 @@ backends: dashboard ## Kafka + Tempo + Loki + Prometheus + Grafana
 	$(KREP) rollout status deploy/tempo --timeout=120s
 	$(KREP) rollout status deploy/grafana --timeout=120s
 
-collector-image: ## Build + load the collector image into kind (single-arch, no attestation manifest)
+collector-image: ## Build + load the collector image into kind (single-arch; archive load works with Docker Desktop containerd store)
 	docker build --provenance=false --sbom=false -f collector/Dockerfile -t otelcol-local:dev collector
-	kind load docker-image otelcol-local:dev --name $(CLUSTER)
+	docker save otelcol-local:dev -o /tmp/otelcol-local.tar
+	kind load image-archive /tmp/otelcol-local.tar --name $(CLUSTER)
 
 collectors: collector-image ## Gateway + Consumer collectors
 	kubectl apply -f k8s/30-collector-gateway.yaml -f k8s/31-collector-consumer.yaml
