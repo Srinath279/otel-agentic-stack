@@ -1,0 +1,58 @@
+# Upstream chart: open-telemetry/opentelemetry-collector
+mode: deployment
+image:
+  repository: otel/opentelemetry-collector-contrib
+replicaCount: 1   # stateful: scale via Kafka partitions, not naive replicas
+config:
+  extensions:
+    health_check:
+      endpoint: 0.0.0.0:13133
+  receivers:
+    kafka/traces: {brokers: [kafka:9092], protocol_version: 2.0.0, topic: otel-traces, encoding: otlp_proto, group_id: otel-consumer}
+    kafka/metrics: {brokers: [kafka:9092], protocol_version: 2.0.0, topic: otel-metrics, encoding: otlp_proto, group_id: otel-consumer}
+    kafka/logs: {brokers: [kafka:9092], protocol_version: 2.0.0, topic: otel-logs, encoding: otlp_proto, group_id: otel-consumer}
+  connectors:
+    spanmetrics:
+      namespace: agent
+      histogram:
+        explicit:
+          buckets: [50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
+      dimensions:
+        - {name: gen_ai.request.model}
+        - {name: agent.name}
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    tail_sampling:
+      decision_wait: 10s
+      num_traces: 50000
+      policies:
+        - {name: errors, type: status_code, status_code: {status_codes: [ERROR]}}
+        - {name: slow, type: latency, latency: {threshold_ms: 2000}}
+        - {name: expensive, type: numeric_attribute, numeric_attribute: {key: gen_ai.usage.output_tokens, min_value: 1000}}
+        - {name: looping, type: numeric_attribute, numeric_attribute: {key: agent.loop.iterations, min_value: 8}}
+        - {name: sample-rest, type: probabilistic, probabilistic: {sampling_percentage: 10}}
+    batch:
+      send_batch_size: 1024
+      timeout: 5s
+  exporters:
+    otlp/tempo: {endpoint: tempo:4317, tls: {insecure: true}}
+    prometheus: {endpoint: 0.0.0.0:8889, resource_to_telemetry_conversion: {enabled: true}, enable_open_metrics: true}
+    otlphttp/loki: {logs_endpoint: http://loki:3100/otlp/v1/logs, tls: {insecure: true}}
+  service:
+    extensions: [health_check]
+    pipelines:
+      traces:
+        receivers: [kafka/traces]
+        processors: [memory_limiter, tail_sampling, batch]
+        exporters: [otlp/tempo, spanmetrics]
+      metrics:
+        receivers: [kafka/metrics, spanmetrics]
+        processors: [memory_limiter, batch]
+        exporters: [prometheus]
+      logs:
+        receivers: [kafka/logs]
+        processors: [memory_limiter, batch]
+        exporters: [otlphttp/loki]

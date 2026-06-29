@@ -1,0 +1,67 @@
+# Upstream chart: open-telemetry/opentelemetry-collector
+mode: deployment
+image:
+  repository: otel/opentelemetry-collector-contrib
+replicaCount: 2
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+ports:
+  otlp:
+    enabled: true
+  otlp-http:
+    enabled: true
+config:
+  extensions:
+    health_check:
+      endpoint: 0.0.0.0:13133
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    resource/tier:
+      attributes:
+        - {key: telemetry.pipeline.tier, value: gateway, action: upsert}
+    transform/genai_semantics:
+      error_mode: ignore
+      trace_statements:
+        - context: span
+          statements:
+            - set(attributes["gen_ai.system"], "anthropic") where attributes["gen_ai.system"] == nil and attributes["gen_ai.request.model"] != nil
+    redaction/pii:
+      allow_all_keys: true
+      blocked_values:
+        - "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}"
+        - "\\b(?:\\d[ -]*?){13,16}\\b"
+    batch:
+      send_batch_size: 1024
+      timeout: 5s
+  exporters:
+    kafka/traces: {brokers: [kafka:9092], protocol_version: 2.0.0, topic: otel-traces, encoding: otlp_proto}
+    kafka/metrics: {brokers: [kafka:9092], protocol_version: 2.0.0, topic: otel-metrics, encoding: otlp_proto}
+    kafka/logs: {brokers: [kafka:9092], protocol_version: 2.0.0, topic: otel-logs, encoding: otlp_proto}
+  service:
+    extensions: [health_check]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource/tier, transform/genai_semantics, redaction/pii, batch]
+        exporters: [kafka/traces]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, resource/tier, batch]
+        exporters: [kafka/metrics]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, resource/tier, redaction/pii, batch]
+        exporters: [kafka/logs]

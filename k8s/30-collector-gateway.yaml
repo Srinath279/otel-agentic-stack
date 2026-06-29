@@ -1,0 +1,123 @@
+# GATEWAY tier — stateless, horizontally scalable. Receives OTLP from agents,
+# normalizes/redacts, and ships to Kafka. No stateful sampling here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collector-gateway-config
+  namespace: otel-demo
+data:
+  collector.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      resource/tier:
+        attributes:
+          - {key: telemetry.pipeline.tier, value: gateway, action: upsert}
+      # Semantic enforcement: backfill gen_ai.system so every team's spans are uniform.
+      transform/genai_semantics:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - set(attributes["gen_ai.system"], "anthropic") where attributes["gen_ai.system"] == nil and attributes["gen_ai.request.model"] != nil
+      # PII redaction — scrub emails / card-like numbers from span + log attributes.
+      redaction/pii:
+        allow_all_keys: true
+        blocked_values:
+          - "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}"
+          - "\\b(?:\\d[ -]*?){13,16}\\b"
+        summary: info
+      batch:
+        send_batch_size: 1024
+        timeout: 5s
+    exporters:
+      kafka/traces:
+        brokers: [kafka:9092]
+        protocol_version: 2.0.0
+        topic: otel-traces
+        encoding: otlp_proto
+      kafka/metrics:
+        brokers: [kafka:9092]
+        protocol_version: 2.0.0
+        topic: otel-metrics
+        encoding: otlp_proto
+      kafka/logs:
+        brokers: [kafka:9092]
+        protocol_version: 2.0.0
+        topic: otel-logs
+        encoding: otlp_proto
+    service:
+      extensions: [health_check]
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resource/tier, transform/genai_semantics, redaction/pii, batch]
+          exporters: [kafka/traces]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, resource/tier, batch]
+          exporters: [kafka/metrics]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, resource/tier, redaction/pii, batch]
+          exporters: [kafka/logs]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector-gateway
+  namespace: otel-demo
+spec:
+  replicas: 1            # HPA scales this (see 50-hpa.yaml)
+  selector:
+    matchLabels: {app: otel-collector-gateway}
+  template:
+    metadata:
+      labels: {app: otel-collector-gateway}
+    spec:
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.115.0
+          args: ["--config=/etc/otel/collector.yaml"]
+          ports:
+            - {containerPort: 4317}
+            - {containerPort: 4318}
+            - {containerPort: 8888}
+            - {containerPort: 13133}
+          volumeMounts:
+            - {name: config, mountPath: /etc/otel}
+          livenessProbe:
+            httpGet: {path: /, port: 13133}
+            initialDelaySeconds: 10
+          resources:
+            requests: {cpu: "100m", memory: "192Mi"}
+            limits: {memory: "512Mi"}
+      volumes:
+        - {name: config, configMap: {name: collector-gateway-config}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-gateway
+  namespace: otel-demo
+spec:
+  selector: {app: otel-collector-gateway}
+  ports:
+    - {name: otlp-grpc, port: 4317, targetPort: 4317}
+    - {name: otlp-http, port: 4318, targetPort: 4318}
+    - {name: telemetry, port: 8888, targetPort: 8888}

@@ -1,0 +1,17 @@
+# Only the gateway collector accepts OTLP from app pods; agents cannot reach
+# Kafka/backends directly. (Enforced only if the CNI supports NetworkPolicy.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-ingress
+  namespace: otel-demo
+spec:
+  podSelector:
+    matchLabels: {app: otel-collector-gateway}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}        # any pod in this namespace (the agents)
+      ports:
+        - {protocol: TCP, port: 4317}
+        - {protocol: TCP, port: 4318}

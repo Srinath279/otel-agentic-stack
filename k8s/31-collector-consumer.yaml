@@ -1,0 +1,159 @@
+# CONSUMER tier — stateful. Reads from Kafka, does tail sampling (needs whole
+# traces), derives RED metrics (spanmetrics), and fans out to the backends.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collector-consumer-config
+  namespace: otel-demo
+data:
+  collector.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+    receivers:
+      kafka/traces:
+        brokers: [kafka:9092]
+        protocol_version: 2.0.0
+        topic: otel-traces
+        encoding: otlp_proto
+        group_id: otel-consumer
+      kafka/metrics:
+        brokers: [kafka:9092]
+        protocol_version: 2.0.0
+        topic: otel-metrics
+        encoding: otlp_proto
+        group_id: otel-consumer
+      kafka/logs:
+        brokers: [kafka:9092]
+        protocol_version: 2.0.0
+        topic: otel-logs
+        encoding: otlp_proto
+        group_id: otel-consumer
+    connectors:
+      # Derive RED metrics (rate/errors/duration) from spans, dimensioned by model + agent.
+      spanmetrics:
+        namespace: agent
+        histogram:
+          explicit:
+            buckets: [50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
+        dimensions:
+          - {name: gen_ai.request.model}
+          - {name: agent.name}
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      # Keep every interesting agent run; sample the boring ones at 10%.
+      tail_sampling:
+        decision_wait: 10s
+        num_traces: 50000
+        policies:
+          - name: errors
+            type: status_code
+            status_code: {status_codes: [ERROR]}
+          - name: slow
+            type: latency
+            latency: {threshold_ms: 2000}
+          - name: expensive
+            type: numeric_attribute
+            numeric_attribute: {key: gen_ai.usage.output_tokens, min_value: 1000}
+          - name: looping
+            type: numeric_attribute
+            numeric_attribute: {key: agent.loop.iterations, min_value: 8}
+          - name: sample-rest
+            type: probabilistic
+            probabilistic: {sampling_percentage: 10}
+      batch:
+        send_batch_size: 1024
+        timeout: 5s
+    exporters:
+      otlp/tempo:
+        endpoint: tempo:4317
+        tls: {insecure: true}
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        resource_to_telemetry_conversion: {enabled: true}
+        enable_open_metrics: true
+      otlphttp/loki:
+        logs_endpoint: http://loki:3100/otlp/v1/logs
+        tls: {insecure: true}
+      # --- PROD EXTENSION: routing + cold storage (the slide's Routing processor) ---
+      # Add the `routing` connector below to split logs by tenant/sensitivity, and an
+      # awss3 exporter for cheap cold replay. Left out of the runnable path to avoid
+      # requiring AWS creds locally:
+      #
+      #   connectors:
+      #     routing/logs:
+      #       default_pipelines: [logs/loki]
+      #       table:
+      #         - context: log
+      #           condition: 'resource.attributes["deployment.environment"] == "prod"'
+      #           pipelines: [logs/loki, logs/cold]
+      #   exporters:
+      #     awss3:
+      #       s3uploader: {region: us-east-1, s3_bucket: my-otel-cold, s3_prefix: logs}
+      #   # then: logs pipeline -> [routing/logs]; logs/loki -> [otlphttp/loki]; logs/cold -> [awss3]
+      debug:
+        verbosity: basic
+    service:
+      extensions: [health_check]
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
+      pipelines:
+        traces:
+          receivers: [kafka/traces]
+          processors: [memory_limiter, tail_sampling, batch]
+          exporters: [otlp/tempo, spanmetrics]
+        metrics:
+          receivers: [kafka/metrics, spanmetrics]
+          processors: [memory_limiter, batch]
+          exporters: [prometheus]
+        logs:
+          receivers: [kafka/logs]
+          processors: [memory_limiter, batch]
+          exporters: [otlphttp/loki]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector-consumer
+  namespace: otel-demo
+spec:
+  replicas: 1            # stateful (tail sampling) — scale via Kafka partitions, not naive replicas
+  selector:
+    matchLabels: {app: otel-collector-consumer}
+  template:
+    metadata:
+      labels: {app: otel-collector-consumer}
+    spec:
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.115.0
+          args: ["--config=/etc/otel/collector.yaml"]
+          ports:
+            - {containerPort: 8889}   # prometheus metrics out
+            - {containerPort: 8888}   # collector self-telemetry
+            - {containerPort: 13133}
+          volumeMounts:
+            - {name: config, mountPath: /etc/otel}
+          livenessProbe:
+            httpGet: {path: /, port: 13133}
+            initialDelaySeconds: 10
+          resources:
+            requests: {cpu: "150m", memory: "256Mi"}
+            limits: {memory: "768Mi"}
+      volumes:
+        - {name: config, configMap: {name: collector-consumer-config}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-consumer
+  namespace: otel-demo
+spec:
+  selector: {app: otel-collector-consumer}
+  ports:
+    - {name: prom, port: 8889, targetPort: 8889}
+    - {name: telemetry, port: 8888, targetPort: 8888}
